@@ -125,6 +125,15 @@ Jaringan: **Solana Devnet** — semua aset adalah token uji, tanpa nilai uang ny
 | I6 | Kirim task tanpa mengisi prompt | Ditolak dengan pesan — tidak boleh crash |
 | I7 | Tanya data pasar: "Berapa harga AGNT sekarang?" | Jawaban berisi angka nyata yang bisa dicek di Explorer (harga spot, likuiditas pool, treasury agent) — bukan jawaban generik |
 
+**Faucet AGNT** (untuk tester yang butuh token AGNT gratis):
+
+| # | Langkah | Hasil yang diharapkan |
+|---|---|---|
+| F1 | Klik tombol **Faucet AGNT** pada panel Agent Service (hubungkan wallet dulu jika belum) | Phantom meminta persetujuan transfer 0.0005 SOL dengan memo `FAUCET` |
+| F2 | Setelah sukses, klik **Refresh** pada feed ±1 menit | Agent mengirim **±50.000 AGNT** ke wallet-mu (memo `FAUCET` terlihat di feed) — cek saldo AGNT |
+| F3 | Coba faucet lagi dalam 1 jam | Agent skip (cooldown per wallet 1 jam) — tidak ada drip kedua sebelum cooldown habis |
+| F4 | Catatan | Butuh agent service berjalan (operator); tanpa bot aktif, request tetap terkirim tapi drip terjadi saat bot online kembali |
+
 ---
 
 ## 3. Yang Memang Belum Didukung (bukan bug)

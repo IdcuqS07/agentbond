@@ -33,6 +33,7 @@ const {
 const {
   getAssociatedTokenAddressSync,
   createAssociatedTokenAccountIdempotentInstruction,
+  createTransferCheckedInstruction,
   unpackMint,
   TOKEN_PROGRAM_ID,
   NATIVE_MINT,
@@ -41,7 +42,7 @@ const { CpAmm } = require("@meteora-ag/cp-amm-sdk");
 
 const DEFAULT_ENV_PATH = path.join(
   process.env.HOME ?? "",
-  "Documents/AgentBond/meteora-invent/studio/.env"
+  ".agentbond-secrets/studio.env"
 );
 
 const RPC = "https://api.devnet.solana.com";
@@ -49,12 +50,17 @@ const MEMO_PROGRAM_ID = new PublicKey("MemoSq4gqABAXKb96qnH8TysNcWxMyWCqXgDLGmfc
 // Defaults = canonical AGNT market (client/src/data/canonicalPools.ts).
 // Any pool can run its own agent: set AGENT_MARKET_POOL + AGENT_TOKEN_MINT.
 const DEFAULT_MARKET_POOL = "Aw25voQXKLu5pswW5srxnfxyaLGQjxZRRFZmz7QEkREw";
-const DEFAULT_TOKEN_MINT = "7AZLo4es23WHtseYrhH2ScPJ1LtRb8Qk5pPGCqyRiji9";
+const DEFAULT_BASE_MINT = "7AZLo4es23WHtseYrhH2ScPJ1LtRb8Qk5pPGCqyRiji9";
 const BUYBACK_MIN_LAMPORTS = 60_000; // below this a swap is not worth the fee
 const POLL_MS = 15_000;
 const MEMO_CHUNK = 400;
 const SLIPPAGE_BPS = 200;
 const ONCE = process.argv.includes("--once");
+// Faucet: a memo starting with FAUCET makes the agent drip the pool's base
+// token back to the requester. Spam-resistant via a per-wallet cooldown plus
+// the small SOL payment that carries the memo.
+const FAUCET_PATTERN = /^FAUCET\b/i;
+const faucetLedger = new Map(); // requester -> last drip timestamp
 
 function loadEnvAgentKeypair() {
   const envPath = process.env.AGENT_ENV_PATH ?? DEFAULT_ENV_PATH;
@@ -68,6 +74,8 @@ function loadEnvAgentKeypair() {
     "AGENT_MARKET_POOL",
     "AGENT_TOKEN_MINT",
     "AGENT_TOKEN_SYMBOL",
+    "AGENT_FAUCET_AMOUNT",
+    "AGENT_FAUCET_COOLDOWN_MS",
     "AGENT_LLM_MAX_TOKENS",
   ]) {
     const setting = env.match(new RegExp(`^${key}\\s*=\\s*["']?([^"'\\r\\n]+)["']?\\s*$`, "m"));
@@ -347,6 +355,55 @@ async function buyback(connection, agent, paymentLamports, poolState, market) {
   };
 }
 
+/** Drip a fixed amount of the market's base token to a faucet requester. */
+async function dripFaucet(connection, agent, market, requesterBase58) {
+  const amountTokens = Number(process.env.AGENT_FAUCET_AMOUNT ?? 50_000);
+  const cooldownMs = Number(process.env.AGENT_FAUCET_COOLDOWN_MS ?? 3_600_000);
+  const last = faucetLedger.get(requesterBase58) ?? 0;
+  const waitMs = cooldownMs - (Date.now() - last);
+  if (waitMs > 0) {
+    return {
+      skipped: true,
+      reason: `cooldown: ~${Math.ceil(waitMs / 60_000)} min left for ${requesterBase58.slice(0, 4)}…${requesterBase58.slice(-4)}`,
+    };
+  }
+  const mint = market.sides.baseMint;
+  const decimals = market.baseDecimals;
+  const raw = BigInt(Math.round(amountTokens * 10 ** decimals));
+  const agentAta = getAssociatedTokenAddressSync(mint, agent.publicKey, false, TOKEN_PROGRAM_ID);
+  const agentBalance = await connection.getTokenAccountBalance(agentAta);
+  if (BigInt(agentBalance.value.amount) < raw) {
+    return {
+      skipped: true,
+      reason: `agent balance too low (${agentBalance.value.uiAmount} tokens available)`,
+    };
+  }
+  const requester = new PublicKey(requesterBase58);
+  const requesterAta = getAssociatedTokenAddressSync(mint, requester, false, TOKEN_PROGRAM_ID);
+  const transaction = new Transaction().add(
+    createAssociatedTokenAccountIdempotentInstruction(
+      agent.publicKey,
+      requesterAta,
+      requester,
+      mint,
+      TOKEN_PROGRAM_ID
+    ),
+    createTransferCheckedInstruction(
+      agentAta,
+      mint,
+      requesterAta,
+      agent.publicKey,
+      raw,
+      decimals,
+      [],
+      TOKEN_PROGRAM_ID
+    )
+  );
+  const signature = await sendAndConfirmTransaction(connection, transaction, [agent]);
+  faucetLedger.set(requesterBase58, Date.now());
+  return { skipped: false, signature, amountTokens };
+}
+
 function extractMemoAndIncoming(tx, agentAddress) {
   let memo = "";
   for (const instruction of tx.transaction.message.instructions) {
@@ -376,7 +433,7 @@ async function main() {
   const cp = new CpAmm(connection);
   const buybackBps = Number(process.env.AGENT_BUYBACK_BPS ?? 5000);
   process.env.AGENT_MARKET_POOL ??= DEFAULT_MARKET_POOL;
-  process.env.AGENT_TOKEN_MINT ??= DEFAULT_TOKEN_MINT;
+  process.env.AGENT_TOKEN_MINT ??= DEFAULT_BASE_MINT;
   const marketPool = new PublicKey(process.env.AGENT_MARKET_POOL);
   console.log(`[agent] wallet ${agent.publicKey.toBase58()}`);
   console.log(`[agent] market ${marketPool.toBase58()} · buyback ${buybackBps / 100}% of each payment`);
@@ -411,8 +468,24 @@ async function main() {
           tx,
           agent.publicKey.toBase58()
         );
-        const isTask = feePayer !== agent.publicKey.toBase58() && incoming > 0 && memo;
-        if (!isTask) continue;
+        if (!memo || feePayer === agent.publicKey.toBase58()) continue;
+        if (FAUCET_PATTERN.test(memo.trim())) {
+          console.log(`\n[faucet] request from ${feePayer} · ${entry.signature}`);
+          try {
+            const drip = await dripFaucet(connection, agent, market, feePayer);
+            if (drip.skipped) {
+              console.log(`[faucet] skipped: ${drip.reason}`);
+            } else {
+              console.log(
+                `[faucet] dripped ${drip.amountTokens} ${process.env.AGENT_TOKEN_SYMBOL ?? "AGNT"} → ${drip.signature}`
+              );
+            }
+          } catch (error) {
+            console.error(`[faucet] failed: ${String(error).slice(0, 200)}`);
+          }
+          continue;
+        }
+        const isTask = incoming > 0;
         const paymentLamports = incoming;
         console.log(`\n[task] ${entry.signature}`);
         console.log(`[task] from ${feePayer} · ${(paymentLamports / LAMPORTS_PER_SOL).toFixed(6)} SOL`);

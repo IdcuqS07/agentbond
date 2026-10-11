@@ -37,7 +37,7 @@ const DAMM_POOL = new PublicKey("Aw25voQXKLu5pswW5srxnfxyaLGQjxZRRFZmz7QEkREw");
 const WSOL = new PublicKey("So11111111111111111111111111111111111111112");
 const AGNT_MINT = new PublicKey("7AZLo4es23WHtseYrhH2ScPJ1LtRb8Qk5pPGCqyRiji9");
 const OPERATOR = "D92g759nWqyjjjwJxJ32KswzEupBHZKYRdJ8RMuv12Cn";
-const DEFAULT_ENV_PATH = `${homedir()}/Documents/AgentBond/meteora-invent/studio/.env`;
+const DEFAULT_ENV_PATH = `${homedir()}/.agentbond-secrets/studio.env`;
 
 const BIN_STEP = 25; // bps -> 0.25% per bin
 const AGNT_DECIMALS = 6;

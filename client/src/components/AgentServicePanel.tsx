@@ -1,8 +1,10 @@
 import { useCallback, useEffect, useState } from "react";
-import { Bot, Check, ExternalLink, Loader2, RefreshCw, Send } from "lucide-react";
+import { Bot, Check, Droplets, ExternalLink, Loader2, RefreshCw, Send } from "lucide-react";
 import {
+  AGENT_FAUCET_FEE_SOL,
   AGENT_MEMO_MAX_CHARS,
   AGENT_MIN_PAYMENT_SOL,
+  buildAgentFaucetRequestTx,
   buildAgentTaskPaymentTx,
   fetchAgentActivity,
   getTestnetAddressUrl,
@@ -41,6 +43,8 @@ export function AgentServicePanel({
   const [amount, setAmount] = useState("0.001");
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
+  const [faucetBusy, setFaucetBusy] = useState(false);
+  const [faucetMessage, setFaucetMessage] = useState<string | null>(null);
   const [activity, setActivity] = useState<AgentActivityItem[] | null>(null);
   const [loadingFeed, setLoadingFeed] = useState(false);
 
@@ -93,6 +97,36 @@ export function AgentServicePanel({
     }
   };
 
+  const requestFaucet = async () => {
+    if (!wallet || !walletProvider || !pool.agentWallet) return;
+    setFaucetBusy(true);
+    setFaucetMessage(null);
+    try {
+      const request = await buildAgentFaucetRequestTx({
+        payer: wallet,
+        agentWallet: pool.agentWallet,
+      });
+      const { transaction, connection, blockhash, lastValidBlockHeight } = request;
+      let signature: string;
+      if (walletProvider.signAndSendTransaction) {
+        signature = (await walletProvider.signAndSendTransaction(transaction)).signature;
+      } else if (walletProvider.sendTransaction) {
+        signature = await walletProvider.sendTransaction(transaction, connection);
+      } else {
+        throw new Error("Connected wallet cannot send transactions");
+      }
+      await connection.confirmTransaction({ signature, blockhash, lastValidBlockHeight }, "confirmed");
+      setFaucetMessage(
+        `Faucet request sent — the agent drips ${pool.symbol} back on-chain within a minute (1 h cooldown per wallet). Refresh the feed below to see the drip.`
+      );
+      setTimeout(loadActivity, 2000);
+    } catch (error) {
+      setFaucetMessage(error instanceof Error ? error.message : "Faucet request failed or was rejected");
+    } finally {
+      setFaucetBusy(false);
+    }
+  };
+
   return (
     <div className="lp-panel">
       <div className="lp-head">
@@ -128,6 +162,22 @@ export function AgentServicePanel({
         </button>
       </div>
       {message && <p className="lp-note">{message}</p>}
+      <div className="lp-row" style={{ justifyContent: "space-between", alignItems: "center" }}>
+        <p className="lp-note" style={{ margin: 0 }}>
+          Need {pool.symbol} for swaps or LP? Pay {AGENT_FAUCET_FEE_SOL} SOL with a FAUCET memo and the agent
+          drips {pool.symbol} back on-chain — one request per hour.
+        </p>
+        <button
+          className="button button-ghost"
+          style={{ flexShrink: 0 }}
+          onClick={requestFaucet}
+          disabled={faucetBusy || !wallet || !walletProvider || !pool.agentWallet}
+        >
+          {faucetBusy ? <Loader2 className="spin" size={14} /> : <Droplets size={14} />}
+          {wallet ? `Faucet ${pool.symbol}` : "Connect wallet for faucet"}
+        </button>
+      </div>
+      {faucetMessage && <p className="lp-note">{faucetMessage}</p>}
       <div className="lp-positions">
         <div className="lp-row" style={{ justifyContent: "space-between", marginTop: 0 }}>
           <small>ON-CHAIN FEED</small>

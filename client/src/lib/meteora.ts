@@ -1463,6 +1463,46 @@ export async function buildAgentTaskPaymentTx(params: {
   return { transaction, connection, blockhash, lastValidBlockHeight };
 }
 
+export const AGENT_FAUCET_FEE_SOL = 0.0005;
+export const AGENT_FAUCET_MEMO = "FAUCET";
+
+/**
+ * Faucet request tx: a minimal SOL payment to the agent's service wallet with
+ * a "FAUCET" memo. The agent service recognizes the memo and drips a fixed
+ * amount of the pool's base token back to the requester on-chain. Reusing the
+ * pay-per-task rail keeps the faucet spam-resistant (payment + on-chain trail)
+ * without any custodial backend.
+ */
+export async function buildAgentFaucetRequestTx(params: {
+  payer: string;
+  agentWallet: string;
+  amountSol?: number;
+}) {
+  const amountSol = params.amountSol ?? AGENT_FAUCET_FEE_SOL;
+  assertDevnetEnvironment();
+  if (!Number.isFinite(amountSol) || amountSol < AGENT_FAUCET_FEE_SOL) {
+    throw new Error(`Faucet request payment must be at least ${AGENT_FAUCET_FEE_SOL} SOL`);
+  }
+  const connection = new Connection(SOLANA_DEVNET_RPC, "confirmed");
+  const payer = new PublicKey(params.payer);
+  const transaction = new Transaction().add(
+    SystemProgram.transfer({
+      fromPubkey: payer,
+      toPubkey: new PublicKey(params.agentWallet),
+      lamports: Math.round(amountSol * 1_000_000_000),
+    }),
+    new TransactionInstruction({
+      programId: MEMO_PROGRAM_ID,
+      keys: [{ pubkey: payer, isSigner: true, isWritable: false }],
+      data: Buffer.from(AGENT_FAUCET_MEMO, "utf8"),
+    })
+  );
+  const { blockhash, lastValidBlockHeight } = await connection.getLatestBlockhash("confirmed");
+  transaction.feePayer = payer;
+  transaction.recentBlockhash = blockhash;
+  return { transaction, connection, blockhash, lastValidBlockHeight };
+}
+
 export type AgentActivityItem = {
   signature: string;
   explorerUrl: string;

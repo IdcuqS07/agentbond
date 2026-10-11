@@ -4,6 +4,7 @@ import { PublicKey } from "@solana/web3.js";
 vi.mock("@meteora-ag/cp-amm-sdk", () => ({ CpAmm: class {} }));
 vi.mock("@meteora-ag/dlmm", () => ({ default: { create: vi.fn() } }));
 import {
+  buildAgentFaucetRequestTx,
   buildDammV2MigrationPreview,
   createLiquidityLifecyclePlan,
   assertDevnetEnvironment,
@@ -76,6 +77,28 @@ describe("Meteora transaction validation", () => {
         provider: sendingProvider,
       })
     ).rejects.toThrow("Initial liquidity amount must be greater than zero");
+  });
+});
+
+describe("Agent faucet request", () => {
+  it("rejects faucet payments below the minimum before building a transaction", async () => {
+    await expect(
+      buildAgentFaucetRequestTx({
+        payer: PublicKey.default.toBase58(),
+        agentWallet: PublicKey.default.toBase58(),
+        amountSol: 0.0001,
+      })
+    ).rejects.toThrow("at least");
+  });
+
+  it("rejects non-numeric faucet payments before building a transaction", async () => {
+    await expect(
+      buildAgentFaucetRequestTx({
+        payer: PublicKey.default.toBase58(),
+        agentWallet: PublicKey.default.toBase58(),
+        amountSol: Number.NaN,
+      })
+    ).rejects.toThrow("at least");
   });
 });
 

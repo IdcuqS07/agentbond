@@ -176,6 +176,13 @@ Run the agent: `AGENT_ENV_PATH=<env outside repo> node scripts/agent-service.cjs
 - **`--once` mode**: one poll-and-process pass, then exit — for cron/CI hosting.
 - **Deploy kit**: `agent-deploy/` (package.json + README + `.env.example`) for Railway (~10 min setup; trial $5 then ~$1-3/mo; the agent only makes outbound calls). Smoke-tested locally with its own `npm install` + `--once` run. Oracle Cloud Always Free migration path documented in the same README (same folder + systemd unit).
 
+### AGNT faucet via memo (2026-10-12)
+
+- **Flow**: the Agent Service panel exposes a "Faucet AGNT" button — it sends 0.0005 SOL to the agent wallet with memo `FAUCET` (`buildAgentFaucetRequestTx` in `client/src/lib/meteora.ts`). `agent-service.cjs` detects memos matching `/^FAUCET/i` before task handling and drips a fixed amount of the pool's base token back to the requester (recipient ATA created idempotently).
+- **Defaults**: `AGENT_FAUCET_AMOUNT=50000` tokens, `AGENT_FAUCET_COOLDOWN_MS=3600000` (per wallet, in-memory — resets on restart; the small SOL payment is the durable spam cost). Both read from the env file; `AGENT_FAUCET_AMOUNT`/`AGENT_FAUCET_COOLDOWN_MS` added to the optional settings list. Faucet requests skip the LLM and buyback; the payment covers the drip tx fee.
+- **Guardrails**: drip skips with a clear log if the agent's token balance is below the amount or a wallet is within cooldown. Operator topped the agent wallet up so the faucet stays funded (in-memory ledger means a restart could re-drip once per wallet — accepted for Devnet).
+- Mirrored in `agent-deploy/agent-service.cjs` (which also had its stale default env path fixed to `~/.agentbond-secrets/studio.env`). Client tests: faucet payment validation (below-minimum and NaN rejections before any RPC call).
+
 ## DLMM pool re-seeded at market price (2026-09-30, operator)
 
 The DLMM pool `GxtUfNFw…` had been left at a stale price (~1.33 SOL/AGNT) with only dust liquidity, making the app's DLMM venue quote look broken next to DAMM v2. Re-seeded on-chain via `scripts/walk-dlmm-price.cjs` (operator keypair loaded from outside the repo, never logged):
