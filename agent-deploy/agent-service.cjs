@@ -64,7 +64,16 @@ const faucetLedger = new Map(); // requester -> last drip timestamp
 
 function loadEnvAgentKeypair() {
   const envPath = process.env.AGENT_ENV_PATH ?? DEFAULT_ENV_PATH;
-  const env = fs.readFileSync(envPath, "utf8");
+  // Env file is optional: hosted environments (Railway) supply settings via
+  // process env directly; local runs fall back to the env file.
+  let env = "";
+  try {
+    env = fs.readFileSync(envPath, "utf8");
+  } catch {
+    if (!process.env.AGENT_PRIVATE_KEY) {
+      throw new Error(`No env file at ${envPath} and no AGENT_PRIVATE_KEY in process env`);
+    }
+  }
   // Optional settings live in the same file; process env wins if set.
   for (const key of [
     "AGENT_LLM_ENDPOINT",
@@ -81,12 +90,11 @@ function loadEnvAgentKeypair() {
     const setting = env.match(new RegExp(`^${key}\\s*=\\s*["']?([^"'\\r\\n]+)["']?\\s*$`, "m"));
     if (setting && !process.env[key]) process.env[key] = setting[1].trim();
   }
-  const match = env.match(/^AGENT_PRIVATE_KEY\s*=\s*["']?([^"'\r\n]+)["']?\s*$/m);
-  if (!match) throw new Error(`AGENT_PRIVATE_KEY not found in ${envPath}`);
-  const raw = match[1].trim();
-  const secret = raw.startsWith("[")
-    ? Uint8Array.from(JSON.parse(raw))
-    : Uint8Array.from(bs58Decode(raw));
+  const raw = process.env.AGENT_PRIVATE_KEY ?? env.match(/^AGENT_PRIVATE_KEY\s*=\s*["']?([^"'\r\n]+)["']?\s*$/m)?.[1];
+  if (!raw) throw new Error(`AGENT_PRIVATE_KEY not found in process env or ${envPath}`);
+  const secret = raw.trim().startsWith("[")
+    ? Uint8Array.from(JSON.parse(raw.trim()))
+    : Uint8Array.from(bs58Decode(raw.trim()));
   return Keypair.fromSecretKey(secret);
 }
 
