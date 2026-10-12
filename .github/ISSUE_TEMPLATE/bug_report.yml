@@ -1,0 +1,41 @@
+name: Bug report
+description: Something is broken on the Devnet app or in the codebase
+labels: ["bug"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Reminder: AgentBond runs on **Solana Devnet only**. Please never paste private keys or mnemonics.
+  - type: textarea
+    id: steps
+    attributes:
+      label: Reproduction steps
+      placeholder: "1) Open ... 2) Connect wallet ... 3) Click ..."
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: Expected behavior
+    validations:
+      required: true
+  - type: textarea
+    id: actual
+    attributes:
+      label: Actual behavior
+    validations:
+      required: true
+  - type: input
+    id: tx
+    attributes:
+      label: Explorer transaction link (if any)
+      placeholder: "https://explorer.solana.com/tx/<SIGNATURE>?cluster=devnet"
+  - type: input
+    id: wallet
+    attributes:
+      label: Wallet address (public)
+  - type: input
+    id: browser
+    attributes:
+      label: Browser + OS
+      placeholder: "Chrome 140 / macOS 15"

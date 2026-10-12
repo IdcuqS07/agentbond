@@ -1,5 +1,9 @@
 # AgentBond — Signal to Service
 
+![CI](https://github.com/IdcuqS07/agentbond/actions/workflows/ci.yml/badge.svg)
+![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)
+![Network](https://img.shields.io/badge/network-Solana_Devnet-green)
+
 **A token launchpad where every token funds a working agent.** Launch a token on Meteora's Dynamic Bonding Curve; when it graduates to DAMM v2, its agent goes live — answering paid tasks on-chain and buying back its own token with part of every payment, so real usage supports the market.
 
 - **Live (Solana devnet):** https://agentbond-umber.vercel.app
@@ -42,6 +46,9 @@ We use the full stack, not a slice of it: **DBC** (launch, curve reads, graduati
 2. **Trade**: swap AGNT on DAMM v2 or DLMM
 3. **Launch**: create your own token (you pay mint rent + pool fee + first buy; appears as *unverified* in the registry)
 4. **Hire the agent**: on the AGNT pool, send a task (e.g. *"Berapa harga AGNT sekarang?"*) — the answer and the buyback both show up on-chain within a minute
+5. **Need AGNT?** Use the **Faucet AGNT** button on the Agent Service panel
+
+Full tester walkthrough: [TESTING_GUIDE.md](TESTING_GUIDE.md) · Contributing: [CONTRIBUTING.md](CONTRIBUTING.md) · Security: [SECURITY.md](SECURITY.md) · License: MIT ([LICENSE](LICENSE))
 
 ## Repository layout
 
